@@ -1,6 +1,6 @@
 {
-  "name": "discord-greeter-bot",
-  "version": "1.0.0",
+  "name": "boldbot",
+  "version": "0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "discord.js": "^11.5.1"
+    "discord.js": "^11.5.1",
+    "mongodb": "^3.3.3"
   }
 }

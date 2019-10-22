@@ -85,9 +85,14 @@ client.on('message', async msg => {
 
   }
 
+
+
+
+  
+
   //TODO: Don't grab events that have already happened.
   if (msg.content.includes('listEvents')) {
-    var msgString = "List of events incoming: \n\n";
+    var msgString = "**List of events incoming:** \n\n";
     var results;
 
 
@@ -105,7 +110,7 @@ client.on('message', async msg => {
       user, password, authMechanism);
 
     // Use connect method to connect to the Server
-    MongoClient.connect(url, async function (err, db) {
+     await MongoClient.connect(url, async function (err, db) {
       assert.equal(null, err);
       console.log("Connected correctly to server");
 
@@ -114,15 +119,13 @@ client.on('message', async msg => {
       
       dbo.collection("events").find({}).toArray(function(err, result) {
         if (err) throw err;
-        console.log(results.toString());
-        result.forEach( event => msgString += `${event.game} ${event.gameMode} scheduled for ${event.date} at ${event.time}.\n\n`);
+        console.log(result);
+        result.forEach( event => msgString += `${event.game} ${event.gameMode} scheduled for ${event.date} at ${event.time}.\n`);
         db.close();
-      });
-      await msg.channel.send(msgString);
-    });
-
+        msg.channel.send(msgString);
+      });    
+    });    
   }
-
 
 });
 

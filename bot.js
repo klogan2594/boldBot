@@ -24,19 +24,19 @@ client.on('raw', packet => {
   if (channel.messages.has(packet.d.message_id)) return;
   // Since we have confirmed the message is not cached, let's fetch it
   channel.fetchMessage(packet.d.message_id).then(message => {
-      // Emojis can have identifiers of name:id format, so we have to account for that case as well
-      const emoji = packet.d.emoji.id ? `${packet.d.emoji.name}:${packet.d.emoji.id}` : packet.d.emoji.name;
-      // This gives us the reaction we need to emit the event properly, in top of the message object
-      const reaction = message.reactions.get(emoji);
-      // Adds the currently reacting user to the reaction's users collection.
-      if (reaction) reaction.users.set(packet.d.user_id, client.users.get(packet.d.user_id));
-      // Check which type of event it is before emitting
-      if (packet.t === 'MESSAGE_REACTION_ADD') {
-          client.emit('messageReactionAdd', reaction, client.users.get(packet.d.user_id));
-      }
-      if (packet.t === 'MESSAGE_REACTION_REMOVE') {
-          client.emit('messageReactionRemove', reaction, client.users.get(packet.d.user_id));
-      }
+    // Emojis can have identifiers of name:id format, so we have to account for that case as well
+    const emoji = packet.d.emoji.id ? `${packet.d.emoji.name}:${packet.d.emoji.id}` : packet.d.emoji.name;
+    // This gives us the reaction we need to emit the event properly, in top of the message object
+    const reaction = message.reactions.get(emoji);
+    // Adds the currently reacting user to the reaction's users collection.
+    if (reaction) reaction.users.set(packet.d.user_id, client.users.get(packet.d.user_id));
+    // Check which type of event it is before emitting
+    if (packet.t === 'MESSAGE_REACTION_ADD') {
+      client.emit('messageReactionAdd', reaction, client.users.get(packet.d.user_id));
+    }
+    if (packet.t === 'MESSAGE_REACTION_REMOVE') {
+      client.emit('messageReactionRemove', reaction, client.users.get(packet.d.user_id));
+    }
   });
 });
 
@@ -47,7 +47,7 @@ client.on('messageReactionAdd', (messageReaction, user) => {
   let msgId = messageReaction.message.id;
   let eventMsgIds = cache.get("eventMsgIds");
   let reactEmoji = messageReaction.emoji.name;
-  //console.log('hellooooooo');
+  console.log('added reaction');
   //console.log(messageReaction.message.id);
   //console.log(messageReaction.emoji.name);
   //console.log(user.id + ": " + user.username);
@@ -62,7 +62,73 @@ client.on('messageReactionAdd', (messageReaction, user) => {
     let reactingUserId = user.id;
 
     let newMsg = msgText += `, ${reactingUserName}`
-    msg.edit(newMsg); 
+    msg.edit(newMsg);
+
+    //Update event doc in mongo
+    const { MongoClient, url } = mongoInit();
+
+    // Use connect method to connect to the Server
+    MongoClient.connect(url, async function (err, db) {
+      assert.equal(null, err);
+      //console.log("Connected correctly to server");
+      if (err) throw err;
+      var dbo = db.db("boldBotDB");
+      var query = { eventMsgId: msgId };
+      var command = { $push: { "participants": reactingUserId } };
+
+      dbo.collection("events").updateOne(query, command, function (err, res) {
+        if (err) throw err;
+        console.log("added participant to event");
+        db.close();
+      });
+
+    });
+
+  }
+});
+
+client.on('messageReactionRemove', (messageReaction, user) => {
+  console.dir(messageReaction);
+  //console.dir(user);
+  let msgId = messageReaction.message.id;
+  let eventMsgIds = cache.get("eventMsgIds");
+  let reactEmoji = messageReaction.emoji.name;
+  console.log('removed reaction');
+  //console.log(messageReaction.message.id);
+  //console.log(messageReaction.emoji.name);
+  //console.log(user.id + ": " + user.username);
+  //console.dir(cache);
+
+  if (eventMsgIds.includes(msgId) && reactEmoji === '✅') {
+    console.log("its working 2!")
+    //Get the info we need to add the user to the event
+    let msg = messageReaction.message;
+    let msgText = msg.content;
+    let reactingUserName = user.username;
+    let reactingUserId = user.id;
+
+    let newMsg = msgText.replace(`, ${reactingUserName}`, "");
+    msg.edit(newMsg);
+
+    //Update event doc in mongo
+    const { MongoClient, url } = mongoInit();
+
+    // Use connect method to connect to the Server
+    MongoClient.connect(url, async function (err, db) {
+      assert.equal(null, err);
+      //console.log("Connected correctly to server");
+      if (err) throw err;
+      var dbo = db.db("boldBotDB");
+      var query = { eventMsgId: msgId };
+      var command = { $pull: { "participants": reactingUserId } };
+
+      dbo.collection("events").updateOne(query, command, function (err, res) {
+        if (err) throw err;
+        console.log("removed participant from event");
+        db.close();
+      });
+
+    });
 
   }
 });
@@ -100,7 +166,7 @@ client.on('message', async msg => {
     var eventMsgId;
 
     //store event to mongodb
-    const {MongoClient, url} = mongoInit();
+    const { MongoClient, url } = mongoInit();
 
     // Use connect method to connect to the Server
     MongoClient.connect(url, async function (err, db) {
@@ -109,7 +175,7 @@ client.on('message', async msg => {
       if (err) throw err;
 
       //send response and get response message id
-      let eventMsg = await msg.channel.send(`Got it. ${game} ${gameMode} scheduled for ${date} at ${time}. \n To join the event, react with a ✅'. \n Current Participants: ${creatorUsername}`)
+      let eventMsg = await msg.channel.send(`Got it. ${game} ${gameMode} scheduled for ${date} at ${time}. \nWanna join? React with a ✅ \nOrganizer: ${creatorUsername} \nParticpants: `)
       eventMsgId = eventMsg.id;
       console.log("eventMsgId: " + eventMsgId);
 
@@ -147,7 +213,7 @@ client.on('message', async msg => {
     var results;
 
     //Get stuff ready to query DB
-    const {MongoClient, url} = mongoInit();
+    const { MongoClient, url } = mongoInit();
 
     // Use connect method to connect to the Server
     await MongoClient.connect(url, async function (err, db) {
@@ -175,7 +241,7 @@ client.login(auth.token);
 
 async function getEventMsgIds() {
   //Get stuff ready to query DB
-  const {MongoClient, url} = mongoInit();
+  const { MongoClient, url } = mongoInit();
 
   // Use connect method to connect to the Server
   MongoClient.connect(url, function (err, db) {
@@ -207,10 +273,5 @@ function mongoInit() {
   // Connection URL
   var url = f('mongodb://%s:%s@localhost:27017/boldBotDB?authMechanism=%s',
     user, password, authMechanism);
-  return {MongoClient: MongoClient, url: url};
-}
-
-
-function createReactionCollectors() {
-
+  return { MongoClient: MongoClient, url: url };
 }

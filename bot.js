@@ -12,7 +12,7 @@ client.on('ready', async () => {
   getEventMsgIds()
 });
 
-
+//testing signed commit
 
 //Need to run this chunk to listen for reactions on non-cached messages
 client.on('raw', packet => {

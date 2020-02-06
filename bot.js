@@ -1,18 +1,21 @@
+//Current Task: work on getting date parsing into mongo acceptable date strings functional (line 158)
+
+
 const Discord = require('discord.js');
 const client = new Discord.Client();
 const auth = require('./auth.json');
 const config = require('./config.json');
 const assert = require('assert');
-var cache = new Map();
+const scheduler = require('node-schedule');
+var reminders = [];
 
+client.login(auth.token);
 
 client.on('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
   client.user.setActivity("Bold Simulator 2020");
-  getEventMsgIds()
+  scheduleReminders();
 });
-
-//testing signed commit
 
 //Need to run this chunk to listen for reactions on non-cached messages
 client.on('raw', packet => {
@@ -42,16 +45,11 @@ client.on('raw', packet => {
 
 
 client.on('messageReactionAdd', (messageReaction, user) => {
-  //console.dir(messageReaction);
-  //console.dir(user);
+
   let msgId = messageReaction.message.id;
   let eventMsgIds = cache.get("eventMsgIds");
   let reactEmoji = messageReaction.emoji.name;
   console.log('added reaction');
-  //console.log(messageReaction.message.id);
-  //console.log(messageReaction.emoji.name);
-  //console.log(user.id + ": " + user.username);
-  //console.dir(cache);
 
   if (eventMsgIds.includes(msgId) && reactEmoji === '✅') {
     console.log("its working!")
@@ -88,16 +86,11 @@ client.on('messageReactionAdd', (messageReaction, user) => {
 });
 
 client.on('messageReactionRemove', (messageReaction, user) => {
-  console.dir(messageReaction);
-  //console.dir(user);
+
   let msgId = messageReaction.message.id;
   let eventMsgIds = cache.get("eventMsgIds");
   let reactEmoji = messageReaction.emoji.name;
   console.log('removed reaction');
-  //console.log(messageReaction.message.id);
-  //console.log(messageReaction.emoji.name);
-  //console.log(user.id + ": " + user.username);
-  //console.dir(cache);
 
   if (eventMsgIds.includes(msgId) && reactEmoji === '✅') {
     console.log("its working 2!")
@@ -151,8 +144,6 @@ client.on('message', async msg => {
   if (msg.content.includes('schedule')) {
     //example request -> !boldBot schedule destiny raid 10/25/19 7:00pm
     let parsedContent = msg.content.split(" ");
-    //console.log(parsedContent.toString());
-    //console.log(msg.author.id);
 
     if (parsedContent.length != 6) {
       //msg.author.send('u r dum');
@@ -164,6 +155,22 @@ client.on('message', async msg => {
     var creatorId = msg.author.id;
     var creatorUsername = msg.author.username;
     var eventMsgId;
+    var curYear = new Date().getFullYear();
+
+  
+    //there's some risks here with assuming the date will be currentYear. could mess things up with scheduling events for January in December
+    if (!date.slice(-4).equals(curYear.toString())){
+      if (date.slice(-2).equals(curYear.toString().slice(-2))) {
+        date = date.slice(-2) + curYear;
+      } else {
+        date = date + "/" + curYear;
+      }
+    }
+
+
+    var dateTimeStr;
+
+
 
     //store event to mongodb
     const { MongoClient, url } = mongoInit();
@@ -175,14 +182,9 @@ client.on('message', async msg => {
       if (err) throw err;
 
       //send response and get response message id
-      let eventMsg = await msg.channel.send(`Got it. ${game} ${gameMode} scheduled for ${date} at ${time}. \nWanna join? React with a ✅ \nOrganizer: ${creatorUsername} \nParticpants: `)
+      let eventMsg = await msg.channel.send(`Got it. ${game} ${gameMode} scheduled for ${date} at ${time}. \nWanna join? React with a ✅ \nOrganizer: ${creatorUsername} \nParticipants: `)
       eventMsgId = eventMsg.id;
       console.log("eventMsgId: " + eventMsgId);
-
-      //store new msgId to cache
-      let curCache = cache.get("eventMsgIds") || [];
-      curCache.push(eventMsgId);
-      cache.set('eventMsgIds', curCache);
 
       //generate JSON
       //TODO: store date and time as JS date object
@@ -191,12 +193,13 @@ client.on('message', async msg => {
         "gameMode": gameMode,
         "date": date,
         "time": time,
+        //"dateTime": 
         "participants": [creatorId],
         "creator": creatorId,
         "eventMsgId": eventMsgId
       };
 
-      console.dir(eventBlob);
+      //console.dir(eventBlob);
 
       var dbo = db.db("boldBotDB");
       dbo.collection("events").insertOne(eventBlob, function (err, res) {
@@ -216,13 +219,11 @@ client.on('message', async msg => {
     const { MongoClient, url } = mongoInit();
 
     // Use connect method to connect to the Server
-    await MongoClient.connect(url, async function (err, db) {
+    MongoClient.connect(url, async function (err, db) {
       assert.equal(null, err);
       //console.log("Connected correctly to server");
-
       if (err) throw err;
       var dbo = db.db("boldBotDB");
-
       dbo.collection("events").find({}).toArray(function (err, result) {
         if (err) throw err;
         console.log(result);
@@ -236,31 +237,9 @@ client.on('message', async msg => {
 });
 
 
-client.login(auth.token);
 
+async function initCache() {
 
-async function getEventMsgIds() {
-  //Get stuff ready to query DB
-  const { MongoClient, url } = mongoInit();
-
-  // Use connect method to connect to the Server
-  MongoClient.connect(url, function (err, db) {
-    assert.equal(null, err);
-    //console.log("Connected correctly to server");
-
-    if (err) throw err;
-    var dbo = db.db("boldBotDB");
-
-    dbo.collection("events").find({}).project({ eventMsgId: 1, _id: 0 }).toArray(function (err, result) {
-      if (err) throw err;
-      //console.log(result.eventMsgId);
-      var parsedResults = result.map(event => event.eventMsgId);
-      //console.log(parsedResults);
-      db.close();
-      cache.set('eventMsgIds', parsedResults);
-      console.log("Event Message Ids cached.");
-    });
-  });
 }
 
 
@@ -274,4 +253,34 @@ function mongoInit() {
   var url = f('mongodb://%s:%s@localhost:27017/boldBotDB?authMechanism=%s',
     user, password, authMechanism);
   return { MongoClient: MongoClient, url: url };
+}
+
+
+
+function scheduleReminders() {
+    //Get stuff ready to query DB
+    const { MongoClient, url } = mongoInit();
+
+    // Use connect method to connect to the Server
+    MongoClient.connect(url, function (err, db) {
+      assert.equal(null, err);
+      //console.log("Connected correctly to server");
+  
+      if (err) throw err;
+      var dbo = db.db("boldBotDB");
+
+      //dbo.collection("events").find({}).project({ eventMsgId: 1, _id: 0 }).toArray(function (err, result) {
+        dbo.collection("events").find({}).toArray(function (err, result) {
+        if (err) throw err;
+        console.log(result);
+
+        
+        //console.log(parsedResults);
+        db.close();
+  
+      });
+  
+  
+    });
+
 }

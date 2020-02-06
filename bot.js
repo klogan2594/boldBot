@@ -1,4 +1,4 @@
-//Current Task: work on getting date parsing into mongo acceptable date strings functional (line 158)
+//Current Task: work on getting date parsing into mongo acceptable date strings functional (line 158) 
 
 
 const Discord = require('discord.js');
